@@ -10,10 +10,19 @@
 <body class="bg-slate-950 text-white min-h-screen flex items-center justify-center p-4">
 
     <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl w-full max-w-lg">
-        <h1 class="text-2xl font-bold mb-4 text-center">Weather App</h1>
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-2xl font-bold">Weather App</h1>
+            <!-- Unit Toggle Button -->
+            <button 
+                id="unit-toggle" 
+                class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold rounded-lg transition"
+            >
+                Switch to °F
+            </button>
+        </div>
         
         <!-- Search Form & Geolocation Button -->
-        <form id="weather-form" class="flex gap-2 mb-6">
+        <form id="weather-form" class="flex gap-2 mb-3">
             <input 
                 type="text" 
                 id="city-input" 
@@ -36,19 +45,47 @@
             </button>
         </form>
 
+        <!-- Favorite Cities Pills Container -->
+        <div id="favorites-container" class="flex flex-wrap gap-2 mb-4">
+            <!-- Injected dynamically -->
+        </div>
+
         <!-- Loading & Error Messages -->
         <div id="loading" class="hidden text-center text-slate-400 mb-4">Loading weather data...</div>
         <div id="error-message" class="hidden text-center text-red-400 mb-4"></div>
 
         <!-- Current Weather Display Card -->
         <div id="weather-card" class="hidden text-center bg-slate-800/50 p-6 rounded-xl border border-slate-700/50 mb-6 transition-all duration-500">
-            <h2 id="city-name" class="text-xl font-semibold text-slate-200"></h2>
+            <div class="flex justify-between items-start">
+                <h2 id="city-name" class="text-xl font-semibold text-slate-200"></h2>
+                <!-- Save Favorite Button -->
+                <button id="save-fav-btn" class="text-slate-400 hover:text-amber-400 text-xl transition" title="Save City">
+                    ⭐
+                </button>
+            </div>
+
             <!-- Weather Icon Representation -->
             <div class="flex justify-center my-1">
                 <img id="weather-icon" src="" alt="Weather Icon" class="w-20 h-20">
             </div>
             <p id="temp" class="text-5xl font-extrabold my-2 text-blue-400"></p>
-            <p id="description" class="capitalize text-slate-300"></p>
+            <p id="description" class="capitalize text-slate-300 mb-4"></p>
+
+            <!-- Extra Metrics Grid (Feels Like, Humidity, Wind) -->
+            <div class="grid grid-cols-3 gap-2 pt-4 border-t border-slate-700/50 text-left">
+                <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-800">
+                    <p class="text-[10px] text-slate-400 uppercase font-medium">Feels Like</p>
+                    <p id="feels-like" class="text-sm font-bold text-slate-200"></p>
+                </div>
+                <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-800">
+                    <p class="text-[10px] text-slate-400 uppercase font-medium">Humidity</p>
+                    <p id="humidity" class="text-sm font-bold text-slate-200"></p>
+                </div>
+                <div class="bg-slate-900/50 p-2 rounded-lg border border-slate-800">
+                    <p class="text-[10px] text-slate-400 uppercase font-medium">Wind Speed</p>
+                    <p id="wind-speed" class="text-sm font-bold text-slate-200"></p>
+                </div>
+            </div>
         </div>
 
         <!-- 5-Day Forecast Section -->
@@ -61,11 +98,19 @@
     </div>
 
     <script>
-        const apiKey = '80c725211bce1e69bcc50acde32b976b'; // Your API key
+        const apiKey = '80c725211bce1e69bcc50acde32b976b';
+        
+        let currentUnit = 'metric'; // 'metric' (°C) or 'imperial' (°F)
+        let lastQueryUrl = null;    // Tracks current city/coords to refresh on unit toggle
+        let currentCityName = '';   // Tracks current city name for favorites
 
         const form = document.getElementById('weather-form');
         const cityInput = document.getElementById('city-input');
         const geoBtn = document.getElementById('geo-btn');
+        const unitToggleBtn = document.getElementById('unit-toggle');
+        const saveFavBtn = document.getElementById('save-fav-btn');
+        const favoritesContainer = document.getElementById('favorites-container');
+        
         const loadingDiv = document.getElementById('loading');
         const errorDiv = document.getElementById('error-message');
         const weatherCard = document.getElementById('weather-card');
@@ -73,25 +118,86 @@
         const weatherIcon = document.getElementById('weather-icon');
         const tempElem = document.getElementById('temp');
         const descElem = document.getElementById('description');
+        
+        const feelsLikeElem = document.getElementById('feels-like');
+        const humidityElem = document.getElementById('humidity');
+        const windSpeedElem = document.getElementById('wind-speed');
+
         const forecastContainer = document.getElementById('forecast-container');
         const forecastList = document.getElementById('forecast-list');
 
-        // Function to fetch and display weather using API URLs
-        async function fetchWeather(weatherUrl, forecastUrl) {
+        // --- LOCAL STORAGE FAVORITES LOGIC ---
+        function getFavorites() {
+            return JSON.parse(localStorage.getItem('weatherFavorites')) || [];
+        }
+
+        function renderFavorites() {
+            const favorites = getFavorites();
+            if (favorites.length === 0) {
+                favoritesContainer.innerHTML = '';
+                return;
+            }
+
+            favoritesContainer.innerHTML = favorites.map(city => `
+                <button onclick="searchCity('${city}')" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full text-xs text-slate-300 transition">
+                    📍 ${city}
+                </button>
+            `).join('');
+        }
+
+        saveFavBtn.addEventListener('click', () => {
+            if (!currentCityName) return;
+            let favorites = getFavorites();
+            if (!favorites.includes(currentCityName)) {
+                favorites.push(currentCityName);
+                localStorage.setItem('weatherFavorites', JSON.stringify(favorites));
+                renderFavorites();
+                saveFavBtn.textContent = '⭐ Saved';
+            }
+        });
+
+        // --- FETCH WEATHER ENGINE ---
+        async function fetchWeather(baseUrlType, queryValue) {
             loadingDiv.classList.remove('hidden');
             errorDiv.classList.add('hidden');
             weatherCard.classList.add('hidden');
             forecastContainer.classList.add('hidden');
 
+            // Build dynamic URLs based on search type (city vs coords) and units
+            let weatherUrl, forecastUrl;
+            if (baseUrlType === 'city') {
+                weatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${queryValue}&units=${currentUnit}&appid=${apiKey}`;
+                forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${queryValue}&units=${currentUnit}&appid=${apiKey}`;
+                lastQueryUrl = { type: 'city', value: queryValue };
+            } else if (baseUrlType === 'coords') {
+                weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${queryValue.lat}&lon=${queryValue.lon}&units=${currentUnit}&appid=${apiKey}`;
+                forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${queryValue.lat}&lon=${queryValue.lon}&units=${currentUnit}&appid=${apiKey}`;
+                lastQueryUrl = { type: 'coords', value: queryValue };
+            }
+
             try {
                 const weatherRes = await fetch(weatherUrl);
-                if (!weatherRes.ok) throw new Error('Location/City not found.');
+                if (!weatherRes.ok) throw new Error('Location not found.');
                 const weatherData = await weatherRes.json();
 
+                currentCityName = weatherData.name;
                 cityName.textContent = `${weatherData.name}, ${weatherData.sys.country}`;
-                tempElem.textContent = `${Math.round(weatherData.main.temp)}°C`;
+                
+                const unitSymbol = currentUnit === 'metric' ? '°C' : '°F';
+                const speedSymbol = currentUnit === 'metric' ? 'm/s' : 'mph';
+
+                tempElem.textContent = `${Math.round(weatherData.main.temp)}${unitSymbol}`;
                 descElem.textContent = weatherData.weather[0].description;
                 
+                // Extra metrics data update
+                feelsLikeElem.textContent = `${Math.round(weatherData.main.feels_like)}${unitSymbol}`;
+                humidityElem.textContent = `${weatherData.main.humidity}%`;
+                windSpeedElem.textContent = `${weatherData.wind.speed} ${speedSymbol}`;
+
+                // Check if city is already in favorites to update star state
+                const favorites = getFavorites();
+                saveFavBtn.textContent = favorites.includes(currentCityName) ? '⭐ Saved' : '☆ Save';
+
                 const iconCode = weatherData.weather[0].icon;
                 weatherIcon.src = `https://openweathermap.org/img/wn/${iconCode}@2x.png`;
 
@@ -125,7 +231,7 @@
                             <div class="bg-slate-800/50 p-2 rounded-xl border border-slate-700/50 text-center flex flex-col items-center justify-between">
                                 <p class="text-xs text-slate-400 font-medium">${dayName}</p>
                                 <img src="https://openweathermap.org/img/wn/${dayIcon}.png" alt="icon" class="w-10 h-10 my-1">
-                                <p class="text-sm font-bold text-blue-400">${dayTemp}°C</p>
+                                <p class="text-sm font-bold text-blue-400">${dayTemp}${unitSymbol}</p>
                             </div>
                         `;
                     });
@@ -141,18 +247,21 @@
             }
         }
 
-        // Form Submit (City Name)
+        // Global search helper for favorite pills
+        window.searchCity = function(cityName) {
+            cityInput.value = cityName;
+            fetchWeather('city', cityName);
+        }
+
+        // Form Submit
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             const city = cityInput.value.trim();
             if (!city) return;
-            
-            const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${apiKey}`;
-            const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&units=metric&appid=${apiKey}`;
-            fetchWeather(weatherUrl, forecastUrl);
+            fetchWeather('city', city);
         });
 
-        // Geolocation Button Click
+        // Geolocation Button
         geoBtn.addEventListener('click', () => {
             if (!navigator.geolocation) {
                 alert('Geolocation is not supported by your browser');
@@ -162,19 +271,28 @@
             loadingDiv.classList.remove('hidden');
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-
-                    const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`;
-                    const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`;
-                    fetchWeather(weatherUrl, forecastUrl);
+                    fetchWeather('coords', { lat: position.coords.latitude, lon: position.coords.longitude });
                 },
                 () => {
                     loadingDiv.classList.add('hidden');
-                    alert('Unable to retrieve your location. Please check your browser permissions.');
+                    alert('Unable to retrieve your location.');
                 }
             );
         });
+
+        // Unit Toggle (°C / °F)
+        unitToggleBtn.addEventListener('click', () => {
+            currentUnit = currentUnit === 'metric' ? 'imperial' : 'metric';
+            unitToggleBtn.textContent = currentUnit === 'metric' ? 'Switch to °F' : 'Switch to °C';
+            
+            // Re-fetch last searched data using new unit
+            if (lastQueryUrl) {
+                fetchWeather(lastQueryUrl.type, lastQueryUrl.value);
+            }
+        });
+
+        // Initialize favorites on load
+        renderFavorites();
     </script>
 </body>
 </html>
