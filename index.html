@@ -7,7 +7,7 @@
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-950 text-white min-h-screen flex items-center justify-center p-4">
+<body id="body-bg" class="bg-slate-950 text-white min-h-screen flex items-center justify-center p-4 transition-colors duration-500">
 
     <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl w-full max-w-lg">
         <h1 class="text-2xl font-bold mb-4 text-center">Weather App</h1>
@@ -34,7 +34,7 @@
         <div id="error-message" class="hidden text-center text-red-400 mb-4"></div>
 
         <!-- Current Weather Display Card -->
-        <div id="weather-card" class="hidden text-center bg-slate-800/50 p-6 rounded-xl border border-slate-700/50 mb-6">
+        <div id="weather-card" class="hidden text-center bg-slate-800/50 p-6 rounded-xl border border-slate-700/50 mb-6 transition-all duration-500">
             <h2 id="city-name" class="text-xl font-semibold text-slate-200"></h2>
             <p id="temp" class="text-5xl font-extrabold my-3 text-blue-400"></p>
             <p id="description" class="capitalize text-slate-300"></p>
@@ -60,7 +60,6 @@
         const cityName = document.getElementById('city-name');
         const tempElem = document.getElementById('temp');
         const descElem = document.getElementById('description');
-        
         const forecastContainer = document.getElementById('forecast-container');
         const forecastList = document.getElementById('forecast-list');
 
@@ -69,14 +68,12 @@
             const city = cityInput.value.trim();
             if (!city) return;
 
-            // Reset UI states
             loadingDiv.classList.remove('hidden');
             errorDiv.classList.add('hidden');
             weatherCard.classList.add('hidden');
             forecastContainer.classList.add('hidden');
 
             try {
-                // 1. Fetch Current Weather
                 const weatherRes = await fetch(
                     `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${apiKey}`
                 );
@@ -87,21 +84,28 @@
 
                 const weatherData = await weatherRes.json();
 
-                // Update Current Weather UI
                 cityName.textContent = `${weatherData.name}, ${weatherData.sys.country}`;
                 tempElem.textContent = `${Math.round(weatherData.main.temp)}°C`;
                 descElem.textContent = weatherData.weather[0].description;
+                
+                // Dynamic theme change based on weather condition
+                const weatherMain = weatherData.weather[0].main.toLowerCase();
+                if (weatherMain.includes('rain')) {
+                    weatherCard.className = "hidden text-center bg-blue-950/60 p-6 rounded-xl border border-blue-800/50 mb-6 transition-all duration-500";
+                } else if (weatherMain.includes('clear')) {
+                    weatherCard.className = "hidden text-center bg-amber-950/40 p-6 rounded-xl border border-amber-700/50 mb-6 transition-all duration-500";
+                } else {
+                    weatherCard.className = "hidden text-center bg-slate-800/50 p-6 rounded-xl border border-slate-700/50 mb-6 transition-all duration-500";
+                }
+
                 weatherCard.classList.remove('hidden');
 
-                // 2. Fetch 5-Day Forecast
                 const forecastRes = await fetch(
                     `https://api.openweathermap.org/data/2.5/forecast?q=${city}&units=metric&appid=${apiKey}`
                 );
                 
                 if (forecastRes.ok) {
                     const forecastData = await forecastRes.json();
-                    
-                    // Filter list to get entries around 12:00:00 each day (1 entry per day)
                     const dailyData = forecastData.list.filter(item => item.dt_txt.includes('12:00:00'));
 
                     forecastList.innerHTML = '';
