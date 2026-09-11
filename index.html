@@ -9,7 +9,7 @@
 </head>
 <body class="bg-slate-950 text-white min-h-screen flex items-center justify-center p-4">
 
-    <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl w-full max-w-md">
+    <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl w-full max-w-lg">
         <h1 class="text-2xl font-bold mb-4 text-center">Weather App</h1>
         
         <!-- Search Form -->
@@ -33,16 +33,24 @@
         <div id="loading" class="hidden text-center text-slate-400 mb-4">Loading weather data...</div>
         <div id="error-message" class="hidden text-center text-red-400 mb-4"></div>
 
-        <!-- Weather Display Card -->
-        <div id="weather-card" class="hidden text-center bg-slate-800/50 p-6 rounded-xl border border-slate-700/50">
+        <!-- Current Weather Display Card -->
+        <div id="weather-card" class="hidden text-center bg-slate-800/50 p-6 rounded-xl border border-slate-700/50 mb-6">
             <h2 id="city-name" class="text-xl font-semibold text-slate-200"></h2>
             <p id="temp" class="text-5xl font-extrabold my-3 text-blue-400"></p>
             <p id="description" class="capitalize text-slate-300"></p>
         </div>
+
+        <!-- 5-Day Forecast Section -->
+        <div id="forecast-container" class="hidden">
+            <h3 class="text-lg font-semibold text-slate-200 mb-3">5-Day Forecast</h3>
+            <div id="forecast-list" class="grid grid-cols-5 gap-2">
+                <!-- Forecast columns will be injected here via JavaScript -->
+            </div>
+        </div>
     </div>
 
     <script>
-        const apiKey = '80c725211bce1e69bcc50acde32b976b'; // Replace with your free OpenWeatherMap API key
+        const apiKey = '80c725211bce1e69bcc50acde32b976b'; // Your API key
 
         const form = document.getElementById('weather-form');
         const cityInput = document.getElementById('city-input');
@@ -52,6 +60,9 @@
         const cityName = document.getElementById('city-name');
         const tempElem = document.getElementById('temp');
         const descElem = document.getElementById('description');
+        
+        const forecastContainer = document.getElementById('forecast-container');
+        const forecastList = document.getElementById('forecast-list');
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -62,24 +73,56 @@
             loadingDiv.classList.remove('hidden');
             errorDiv.classList.add('hidden');
             weatherCard.classList.add('hidden');
+            forecastContainer.classList.add('hidden');
 
             try {
-                const response = await fetch(
+                // 1. Fetch Current Weather
+                const weatherRes = await fetch(
                     `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${apiKey}`
                 );
 
-                if (!response.ok) {
-                    throw new Error('City not found. Please try again.');
+                if (!weatherRes.ok) {
+                    throw new Error('City not found. Please check the spelling.');
                 }
 
-                const data = await response.json();
+                const weatherData = await weatherRes.json();
 
-                // Update UI with real weather data
-                cityName.textContent = `${data.name}, ${data.sys.country}`;
-                tempElem.textContent = `${Math.round(data.main.temp)}°C`;
-                descElem.textContent = data.weather[0].description;
-
+                // Update Current Weather UI
+                cityName.textContent = `${weatherData.name}, ${weatherData.sys.country}`;
+                tempElem.textContent = `${Math.round(weatherData.main.temp)}°C`;
+                descElem.textContent = weatherData.weather[0].description;
                 weatherCard.classList.remove('hidden');
+
+                // 2. Fetch 5-Day Forecast
+                const forecastRes = await fetch(
+                    `https://api.openweathermap.org/data/2.5/forecast?q=${city}&units=metric&appid=${apiKey}`
+                );
+                
+                if (forecastRes.ok) {
+                    const forecastData = await forecastRes.json();
+                    
+                    // Filter list to get entries around 12:00:00 each day (1 entry per day)
+                    const dailyData = forecastData.list.filter(item => item.dt_txt.includes('12:00:00'));
+
+                    forecastList.innerHTML = '';
+                    dailyData.forEach(day => {
+                        const date = new Date(day.dt * 1000);
+                        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                        const dayTemp = Math.round(day.main.temp);
+                        const weatherType = day.weather[0].main;
+
+                        forecastList.innerHTML += `
+                            <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 text-center flex flex-col justify-between">
+                                <p class="text-xs text-slate-400 font-medium">${dayName}</p>
+                                <p class="text-base font-bold my-1 text-blue-400">${dayTemp}°C</p>
+                                <p class="text-[10px] capitalize text-slate-300 truncate">${weatherType}</p>
+                            </div>
+                        `;
+                    });
+
+                    forecastContainer.classList.remove('hidden');
+                }
+
             } catch (err) {
                 errorDiv.textContent = err.message;
                 errorDiv.classList.remove('hidden');
