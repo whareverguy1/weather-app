@@ -12,20 +12,27 @@
     <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl w-full max-w-lg">
         <h1 class="text-2xl font-bold mb-4 text-center">Weather App</h1>
         
-        <!-- Search Form -->
+        <!-- Search Form & Geolocation Button -->
         <form id="weather-form" class="flex gap-2 mb-6">
             <input 
                 type="text" 
                 id="city-input" 
                 placeholder="Enter city name..." 
                 class="flex-1 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
-                required
             >
             <button 
                 type="submit" 
                 class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl font-medium transition"
             >
                 Search
+            </button>
+            <button 
+                type="button" 
+                id="geo-btn" 
+                class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition text-lg"
+                title="Use My Current Location"
+            >
+                📍
             </button>
         </form>
 
@@ -58,6 +65,7 @@
 
         const form = document.getElementById('weather-form');
         const cityInput = document.getElementById('city-input');
+        const geoBtn = document.getElementById('geo-btn');
         const loadingDiv = document.getElementById('loading');
         const errorDiv = document.getElementById('error-message');
         const weatherCard = document.getElementById('weather-card');
@@ -68,36 +76,26 @@
         const forecastContainer = document.getElementById('forecast-container');
         const forecastList = document.getElementById('forecast-list');
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const city = cityInput.value.trim();
-            if (!city) return;
-
+        // Function to fetch and display weather using API URLs
+        async function fetchWeather(weatherUrl, forecastUrl) {
             loadingDiv.classList.remove('hidden');
             errorDiv.classList.add('hidden');
             weatherCard.classList.add('hidden');
             forecastContainer.classList.add('hidden');
 
             try {
-                const weatherRes = await fetch(
-                    `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${apiKey}`
-                );
-
-                if (!weatherRes.ok) {
-                    throw new Error('City not found. Please check the spelling.');
-                }
-
+                const weatherRes = await fetch(weatherUrl);
+                if (!weatherRes.ok) throw new Error('Location/City not found.');
                 const weatherData = await weatherRes.json();
 
                 cityName.textContent = `${weatherData.name}, ${weatherData.sys.country}`;
                 tempElem.textContent = `${Math.round(weatherData.main.temp)}°C`;
                 descElem.textContent = weatherData.weather[0].description;
                 
-                // Set the official OpenWeather icon graphic
                 const iconCode = weatherData.weather[0].icon;
                 weatherIcon.src = `https://openweathermap.org/img/wn/${iconCode}@2x.png`;
 
-                // Dynamic theme color update
+                // Theme background switcher
                 const weatherMain = weatherData.weather[0].main.toLowerCase();
                 if (weatherMain.includes('rain')) {
                     weatherCard.className = "hidden text-center bg-blue-950/60 p-6 rounded-xl border border-blue-800/50 mb-6 transition-all duration-500";
@@ -111,10 +109,7 @@
 
                 weatherCard.classList.remove('hidden');
 
-                const forecastRes = await fetch(
-                    `https://api.openweathermap.org/data/2.5/forecast?q=${city}&units=metric&appid=${apiKey}`
-                );
-                
+                const forecastRes = await fetch(forecastUrl);
                 if (forecastRes.ok) {
                     const forecastData = await forecastRes.json();
                     const dailyData = forecastData.list.filter(item => item.dt_txt.includes('12:00:00'));
@@ -144,6 +139,41 @@
             } finally {
                 loadingDiv.classList.add('hidden');
             }
+        }
+
+        // Form Submit (City Name)
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const city = cityInput.value.trim();
+            if (!city) return;
+            
+            const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${apiKey}`;
+            const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&units=metric&appid=${apiKey}`;
+            fetchWeather(weatherUrl, forecastUrl);
+        });
+
+        // Geolocation Button Click
+        geoBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by your browser');
+                return;
+            }
+
+            loadingDiv.classList.remove('hidden');
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+
+                    const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`;
+                    const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`;
+                    fetchWeather(weatherUrl, forecastUrl);
+                },
+                () => {
+                    loadingDiv.classList.add('hidden');
+                    alert('Unable to retrieve your location. Please check your browser permissions.');
+                }
+            );
         });
     </script>
 </body>
