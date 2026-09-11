@@ -4,4 +4,4 @@ Tech Stack: HTML5, JavaScript, Tailwind CSS, OpenWeatherMap API.
 
 Features List: (Search, Geolocation, 5-Day Forecast, LocalStorage Favorites, °C/°F Toggle).
 
-Live Demo Link: A direct link to your GitHub Pages deployment.
+Live Demo Link: https://whareverguy1.github.io/weather-app/
